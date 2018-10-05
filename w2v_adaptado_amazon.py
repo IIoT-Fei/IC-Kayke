@@ -27,7 +27,7 @@ def palavras():
         l=l.replace("  "," ")
         w = l.split(" ")
         
-        w = filter(lambda k: k != '', w)
+        w = list(filter(lambda k: k != '', w))
         
         for x in w:
             yield x
@@ -52,8 +52,16 @@ stop_words = sorted(d.keys(), key=lambda x: d[x], reverse=True)
 stop_words_count = [d[x] for x in stop_words]
 
 
-words = stop_words[ int(len(stop_words)*0.2):]
+words = stop_words[ int(len(stop_words)*0.4):]
 idx = dict([(b,a) for (a,b) in enumerate(words)])
+
+w2c = tf.layers.Dense(12,kernel_initializer=tf.random_uniform_initializer)
+out_layer = tf.layers.Dense(len(words), activation=lambda x: tf.nn.softmax, kernel_initializer=tf.random_uniform_initializer,
+bias_initializer=tf.random_uniform_initializer)
+model = keras.Sequential([
+    w2c,
+    out_layer
+])
 
 def gera_treinamento(janelas):
     for j in janelas:
@@ -63,7 +71,7 @@ def gera_treinamento(janelas):
 def cria_vetores_treinamento():
     x_train = []
     y_train = []
-    for (a,b) in tqdm(gera_treinamento(win(filter(lambda x: x in words, palavras()),2))):
+    for (a,b) in tqdm(gera_treinamento(win(filter(lambda x: x in words, palavras()),5))):
         x = [0] * len(words)
         x[idx[a]] = 1
         y_train.append(x)
@@ -78,52 +86,23 @@ def cria_vetores_treinamento():
     np.save("x_train", x_train)
     np.save("y_train", y_train)
 
-def embbeded(word):
-    x = [0] * len(words)
-    for i in words:
-            x[idx[i]] = 1
-    return x
-
-
 def carrega_vetores_treinamento():
     x_train = np.load("x_train.npy")
     y_train = np.load("y_train.npy")
     return x_train, y_train
 
-#print("Criando vetores Treinamento")
+print("Criando vetores Treinamento")
 #cria_vetores_treinamento()
 (x_train, y_train) = carrega_vetores_treinamento()
-#print("Vetores de Treinamento carregados")
+print("Vetores de Treinamento carregados")
 
-sz_words = x_train.shape[1]
+print("x=")
+print(x_train[1,:])
+print("y=")
+print(y_train[1,:])
 
-entrada = tf.placeholder(tf.float32,[1,sz_words])
-saida_esperada = tf.placeholder(tf.float32,[1,sz_words])
-
-w2v = tf.Variable(tf.random_normal([sz_words, 2]))
-b_w2v = tf.Variable(tf.random_normal([1]))
-
-w_saida = tf.Variable(tf.random_normal([2, sz_words]))
-b_saida = tf.Variable(tf.random_normal([1]))
-
-c1 = tf.add(tf.matmul(entrada, w2v), b_w2v)
-c2 = tf.add(tf.matmul(c1, w_saida), b_saida)
-
-
-loss = tf.losses.mean_pairwise_squared_error(saida_esperada,c2)
-ls = tf.losses.softmax_cross_entropy(saida_esperada,c2)
-otm = tf.train.AdamOptimizer(0.005).minimize(loss)
-
-s = tf.Session()
-s.run(tf.global_variables_initializer())
-for i in range(1):
-    stat=tqdm(zip(x_train, y_train))
-    for (a,b) in stat:
-        l,_ = s.run([loss, otm], {entrada: [a], saida_esperada: [b]})
-        stat.set_description("erro: %04.2f" % l)
-    
-    print("%d vez: erro: %f" % (i,l))
-
+model.compile(tf.train.AdamOptimizer(0.001), tf.losses.softmax_cross_entropy )
+model.fit(x_train, y_train, epochs=50)
 
 def testa(idx):
     x = [0]*len(words)
@@ -131,7 +110,7 @@ def testa(idx):
     print(words[idx])
     x = np.array([x])
 
-    saida = s.run([c2], {entrada: [x]})
+    saida = model.predict(x)
     for ww in list(reversed(np.argsort(saida)))[0][:5]:
         print(words[ww])
     print("finalizei")
